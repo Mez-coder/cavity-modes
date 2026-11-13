@@ -13,12 +13,15 @@ then the browser front end.
 
 ## Quick start
 
+Uses [uv](https://docs.astral.sh/uv/).
+
 ```bash
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-pytest
-python examples/pillbox_tour.py        # writes PNGs to examples/output/
+uv sync                                  # creates .venv, installs package + dev tools
+uv run pytest
+uv run python examples/pillbox_tour.py   # writes PNGs to examples/output/
 ```
+
+Commit `uv.lock` so every machine resolves the same versions.
 
 ## Layout
 
