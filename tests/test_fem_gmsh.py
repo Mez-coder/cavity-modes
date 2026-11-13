@@ -22,16 +22,17 @@ def test_gmsh_pillbox_matches_analytic():
     assert f.R_over_Q_ohm == pytest.approx(g.R_over_Q_ohm, rel=5e-3)
 
 
-def test_gmsh_beam_pipe_lowers_tm010():
-    """Beam-pipe holes add E-dominated volume on axis -> TM010 frequency drops,
-    and with pipes well below cut-off the mode is confined to the cell."""
+def test_gmsh_beam_pipe_raises_tm010():
+    """Beam-pipe holes add volume on axis at the end walls, where TM010 is
+    E-dominated (H_phi ~ J1(kr) -> 0). Slater: adding E-dominated volume
+    RAISES the frequency. With pipes far below cut-off (TM01 cut-off ~14 GHz
+    for r = 8 mm) the field is confined to the cell."""
     p = Profile.pillbox(A, D, pipe_radius=0.008, pipe_length=0.03)
     m = solve_modes(p, 3.2e9, kinds=("TM",), h=1.0e-3, h_axis=0.4e-3)[0]
     f0 = cm.PillboxMode("TM", 1, 0, A, D).frequency
-    assert 0.97 * f0 < m.frequency < f0
+    assert f0 < m.frequency < 1.03 * f0
     ez = np.abs(m.on_axis_Ez(np.array([-0.03 + 1e-4, D / 2])))
     assert ez[0] < 1e-3 * ez[1]
-
 
 def test_gmsh_nose_cone_runs():
     noses = [("line", [(-0.02, 0.006), (0.0, 0.006)]),
