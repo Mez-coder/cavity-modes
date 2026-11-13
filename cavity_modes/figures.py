@@ -83,6 +83,8 @@ class FigureOfMerit:
 
 def figures_of_merit(mode: Mode, beta: float, sigma: float = SIGMA_COPPER,
                      length: float | None = None) -> FigureOfMerit:
+    if length is None:
+        length = getattr(mode, "cell_length", None)
     L = (mode.z_max - mode.z_min) if length is None else length
     ws = mode.wall_samples()
     H2, E2 = tangential_H2_and_E2(mode, ws)
