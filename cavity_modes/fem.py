@@ -108,6 +108,24 @@ class P2Mesh:
         self.vz = z[tris]
         self._tree = cKDTree(np.c_[r[tris].mean(1), z[tris].mean(1)])
         self.h_char = float(np.sqrt(np.median(self.area) * 2))
+        be = np.asarray(tm.bedges)
+        self._bseg = np.stack([np.c_[r[be[:, 0]], z[be[:, 0]]], np.c_[r[be[:, 1]], z[be[:, 1]]]], 1)
+
+    def inside(self, r, z, chunk=4096):
+        """Even-odd point-in-polygon test against the mesh boundary."""
+        r = np.asarray(r, float).ravel()
+        z = np.asarray(z, float).ravel()
+        a, b = self._bseg[:, 0], self._bseg[:, 1]  # (E, 2) as (r, z)
+        out = np.zeros(r.size, bool)
+        for i in range(0, r.size, chunk):
+            rr, zz = r[i:i + chunk, None], z[i:i + chunk, None]
+            # ray from the point towards +r; count crossings
+            straddle = (a[None, :, 1] > zz) != (b[None, :, 1] > zz)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                rx = a[None, :, 0] + (zz - a[None, :, 1]) * (b[None, :, 0] - a[None, :, 0]) / (
+                    b[None, :, 1] - a[None, :, 1])
+            out[i:i + chunk] = np.count_nonzero(straddle & (rx > rr), axis=1) % 2 == 1
+        return out
 
     # ---------------------------------------------------------------- assembly
     def assemble(self):
@@ -146,6 +164,9 @@ class P2Mesh:
         L = np.zeros((r.size, 3))
         todo = np.arange(r.size)
         for k in (8, 32, 128):
+            if k == 32 and todo.size:
+                # points that missed the nearest elements: drop those clearly outside
+                todo = todo[self.inside(r[todo], z[todo]) | self._near_boundary(r[todo], z[todo])]
             if todo.size == 0:
                 break
             k = min(k, self.n_elems)
@@ -163,6 +184,15 @@ class P2Mesh:
             L[idx] = np.clip(lam[hit, first[hit]], 0, 1)
             todo = todo[~hit]
         return elem, L
+
+    def _near_boundary(self, r, z):
+        """Points within a small distance of the boundary (where the parity test is fragile)."""
+        if not hasattr(self, "_btree"):
+            pts = self._bseg.reshape(-1, 2)
+            self._btree = cKDTree(pts)
+            self._bmaxlen = float(np.max(np.hypot(*(self._bseg[:, 1] - self._bseg[:, 0]).T)))
+        d, _ = self._btree.query(np.c_[r, z], k=1)
+        return d < 0.6 * self._bmaxlen
 
     def eval(self, coef, elem, L):
         """u, du/dr, du/dz at located points (elem >= 0)."""
@@ -200,6 +230,19 @@ class FEMMode(Mode):
         scale = np.sqrt(2 * MU0 / mass) if kind == "TM" else np.sqrt(2 / (EPS0 * mass))
         self.coef = coef * scale
         self._wall = None
+        self._axis = None
+
+    def on_axis_Ez(self, z):
+        """On-axis Ez, from a fine cached sampling (P2 gives a piecewise-linear Ez)."""
+        if self.kind == "TE":
+            return np.zeros_like(np.asarray(z, float))
+        if self._axis is None:
+            n = int(np.clip((self.z_max - self.z_min) / (0.25 * self.mesh.h_char), 2000, 40000))
+            zs = np.linspace(self.z_min, self.z_max, n)
+            self._axis = (zs, self.fields(np.zeros_like(zs), zs).Ez)
+        zs, ez = self._axis
+        z = np.asarray(z, float)
+        return np.interp(z, zs, ez, left=0.0, right=0.0)
 
     def _fields_at(self, elem, L, r):
         u, ur, uz = self.mesh.eval(self.coef, elem, L)

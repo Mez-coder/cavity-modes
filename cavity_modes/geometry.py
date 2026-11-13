@@ -113,6 +113,62 @@ class Profile:
     def from_segments(cls, segments, **kw) -> "Profile":
         return cls(join_segments(segments), **kw)
 
+    @classmethod
+    def from_control_points(cls, points, smooth, n_per_spline: int = 80, **kw) -> "Profile":
+        """Wall from control points [(z, r), ...] with a smooth flag per point.
+
+        The wall is split at corner points (smooth = False; the two end points
+        are always corners). Runs with interior smooth points become an
+        interpolating spline, runs without become straight lines. This is the
+        representation the browser editor uses.
+        """
+        pts = np.asarray(points, float)
+        sm = np.asarray(smooth, bool).copy()
+        if len(pts) < 2:
+            raise ValueError("need at least two wall points")
+        sm[0] = sm[-1] = False
+        corners = np.flatnonzero(~sm)
+        segs = []
+        for a, b in zip(corners[:-1], corners[1:]):
+            run = pts[a:b + 1]
+            segs.append(("line", run) if b - a == 1 else ("spline", run, n_per_spline))
+        return cls(join_segments(segs), **kw)
+
+    def check(self):
+        """Raise ValueError if the domain polygon is not simple (self-intersecting)."""
+        hit = self.self_intersection()
+        if hit is not None:
+            z, r = hit
+            raise ValueError(f"The wall crosses itself near z = {z*1e3:.1f} mm, r = {r*1e3:.1f} mm.")
+
+    def self_intersection(self):
+        """(z, r) of the first place the domain boundary crosses itself, or None."""
+        v, _ = self.polygon()
+        n = len(v)
+        a, b = v, np.roll(v, -1, axis=0)
+        d = b - a
+
+        def cross(u, w):
+            return u[..., 0] * w[..., 1] - u[..., 1] * w[..., 0]
+
+        I, J = np.triu_indices(n, k=2)
+        keep = ~((I == 0) & (J == n - 1))  # first and last edges share a vertex
+        I, J = I[keep], J[keep]
+        d1, d2 = d[I], d[J]
+        den = cross(d1, d2)
+        ok = np.abs(den) > 1e-18
+        I, J, d1, d2, den = I[ok], J[ok], d1[ok], d2[ok], den[ok]
+        q = a[J] - a[I]
+        t = cross(q, d2) / den
+        u = cross(q, d1) / den
+        eps = 1e-9
+        hit = (t > eps) & (t < 1 - eps) & (u > eps) & (u < 1 - eps)
+        if hit.any():
+            k = np.flatnonzero(hit)[0]
+            z, r = a[I[k]] + t[k] * d1[k]
+            return float(z), float(r)
+        return None
+
     # -------- boundary polygon
     def polygon(self):
         """CCW polygon in the (z, r) plane and a tag for each edge.

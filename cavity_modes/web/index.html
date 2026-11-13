@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cavity modes</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <h1>Cavity modes</h1>
+  <p class="status" id="status" role="status" aria-live="polite">Loading…</p>
+</header>
+
+<main>
+  <!-- ============================================================ geometry + field -->
+  <section class="drawing" aria-labelledby="h-geom">
+    <div class="section-head">
+      <h2 id="h-geom">Cell section</h2>
+      <div class="toolbar">
+        <label>Shape
+          <select id="preset">
+            <option value="smooth">Smooth cell with beam pipes</option>
+            <option value="pillbox">Pillbox</option>
+            <option value="pillbox_pipes">Pillbox with beam pipes</option>
+            <option value="nose">Nose-cone cell</option>
+          </select>
+        </label>
+        <label>Show
+          <select id="quantity"></select>
+        </label>
+        <button id="play" type="button" aria-pressed="false">Animate</button>
+        <label class="slider">RF phase <input id="rfphase" type="range" min="0" max="360" value="0" step="1"></label>
+        <button id="fit" type="button">Fit view</button>
+      </div>
+    </div>
+    <div id="editor" class="editor">
+      <canvas id="heat"></canvas>
+      <svg id="svg" role="application" aria-label="Cavity wall editor. Drag points to reshape the wall."></svg>
+    </div>
+    <canvas id="axisplot" class="axisplot" aria-label="On-axis Ez of the selected mode"></canvas>
+    <p class="hint">Drag a point to reshape the wall. Double-click the drawing to add a point.
+      Right-click a point to switch it between corner (square) and smooth (circle). Select a point and press Delete to remove it,
+      or use the arrow keys to nudge it (Shift for 1 mm).</p>
+    <div class="inspector" id="inspector" hidden>
+      <span id="insp-name"></span>
+      <label>z <input id="insp-z" type="number" step="0.1"> mm</label>
+      <label>r <input id="insp-r" type="number" step="0.1" min="0"> mm</label>
+      <label><input id="insp-smooth" type="checkbox"> smooth</label>
+      <button id="insp-del" type="button">Delete point</button>
+    </div>
+  </section>
+
+  <!-- ============================================================ solver + modes -->
+  <section class="controls" aria-labelledby="h-solve">
+    <h2 id="h-solve">Solve</h2>
+    <div class="form">
+      <label>Up to <input id="fmax" type="number" value="8" min="0.1" step="0.5"> GHz</label>
+      <label>Mesh size <input id="h" type="number" value="0.8" min="0.05" step="0.1"> mm</label>
+      <label>Near axis <input id="haxis" type="number" placeholder="same" min="0.02" step="0.05"> mm</label>
+      <label>Cell length <input id="cell" type="number" step="0.1"> mm</label>
+      <fieldset class="inline"><legend>Families</legend>
+        <label><input id="tm" type="checkbox" checked> TM</label>
+        <label><input id="te" type="checkbox" checked> TE</label>
+      </fieldset>
+      <label id="bcin-wrap">Upstream end
+        <select id="bcin"><option value="electric">electric plane</option><option value="magnetic">magnetic plane</option><option value="metal">metal wall</option></select>
+      </label>
+      <label id="bcout-wrap">Downstream end
+        <select id="bcout"><option value="electric">electric plane</option><option value="magnetic">magnetic plane</option><option value="metal">metal wall</option></select>
+      </label>
+    </div>
+    <div class="actions">
+      <button id="solve" class="primary" type="button">Solve modes</button>
+      <label><input id="auto" type="checkbox" checked> after each edit</label>
+    </div>
+
+    <h2 id="h-modes">Modes</h2>
+    <p class="note" id="beta-note"></p>
+    <div class="table-wrap">
+      <table id="modes" aria-labelledby="h-modes">
+        <thead><tr>
+          <th scope="col">Mode</th><th scope="col">f / GHz</th><th scope="col">Q₀</th>
+          <th scope="col">T</th><th scope="col">R/Q / Ω</th><th scope="col">ZT² / MΩ/m</th>
+          <th scope="col">E<sub>pk</sub>/E<sub>acc</sub></th><th scope="col">Drive</th>
+        </tr></thead>
+        <tbody><tr><td colspan="8" class="empty">Solve to list the modes of this cell.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================================================ results -->
+  <section class="results" aria-labelledby="h-ps">
+    <h2 id="h-ps">Phase space</h2>
+    <div class="legend"><span class="sw in"></span> entering the cell <span class="sw out"></span> leaving the cell</div>
+    <div class="ps-grid">
+      <canvas id="ps-x" aria-label="x versus x prime"></canvas>
+      <canvas id="ps-y" aria-label="y versus y prime"></canvas>
+      <canvas id="ps-l" aria-label="RF phase versus energy"></canvas>
+      <canvas id="ps-t" aria-label="RF phase versus x"></canvas>
+    </div>
+    <canvas id="envelope" class="envelope" aria-label="Beam size along the cell"></canvas>
+  </section>
+
+  <!-- ============================================================ beam + drive -->
+  <section class="beam" aria-labelledby="h-beam">
+    <h2 id="h-beam">Beam</h2>
+    <div class="form two">
+      <label>Particle
+        <select id="species"><option value="electron">electron</option><option value="positron">positron</option><option value="proton">proton</option></select>
+      </label>
+      <label>Energy <input id="ek" type="number" value="4" min="0.001" step="0.5"> MeV</label>
+      <label>Particles <input id="npart" type="number" value="5000" min="10" max="100000" step="1000"></label>
+      <label>Seed <input id="seed" type="number" value="1" step="1"></label>
+      <label>ε<sub>n,x</sub> <input id="enx" type="number" value="1" min="0" step="0.1"> µm</label>
+      <label>ε<sub>n,y</sub> <input id="eny" type="number" value="1" min="0" step="0.1"> µm</label>
+      <label>β<sub>x</sub> <input id="bx" type="number" value="0.4" min="0.001" step="0.05"> m</label>
+      <label>β<sub>y</sub> <input id="by" type="number" value="0.4" min="0.001" step="0.05"> m</label>
+      <label>α<sub>x</sub> <input id="ax" type="number" value="0.5" step="0.1"></label>
+      <label>α<sub>y</sub> <input id="ay" type="number" value="0.5" step="0.1"></label>
+      <label>σ<sub>t</sub> <input id="st" type="number" value="3" min="0" step="0.5"> ps</label>
+      <label>σ<sub>δ</sub> <input id="sd" type="number" value="0.2" min="0" step="0.05"> %</label>
+    </div>
+
+    <h2 id="h-drive">Drive</h2>
+    <p class="note">Each driven mode oscillates at its own frequency. Phase is measured from the crest for the reference particle.</p>
+    <table id="drives" class="drives" aria-labelledby="h-drive">
+      <thead><tr><th scope="col">Mode</th><th scope="col">Set by</th><th scope="col">Value</th><th scope="col">Phase / °</th><th scope="col"><span class="sr">Remove</span></th></tr></thead>
+      <tbody><tr><td colspan="5" class="empty">Tick “Drive” on a mode to add it.</td></tr></tbody>
+    </table>
+    <div class="form">
+      <label>Crest
+        <select id="crest"><option value="tracked">found by tracking</option><option value="analytic">constant-velocity estimate</option></select>
+      </label>
+    </div>
+    <div class="actions">
+      <button id="track" class="primary" type="button" disabled>Track bunch</button>
+    </div>
+
+    <h2 id="h-stats">Bunch, in and out</h2>
+    <table id="stats" class="stats" aria-labelledby="h-stats">
+      <thead><tr><th scope="col"></th><th scope="col">in</th><th scope="col">out</th><th scope="col">change</th></tr></thead>
+      <tbody><tr><td colspan="4" class="empty">Track a bunch to compare.</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -6,11 +6,10 @@ The goal: define a cell shape (eventually by dragging spline points in a
 browser), solve Maxwell's equations for every mode, and track a bunch through
 any combination of modes to see how the phase space changes in all planes.
 
-**Status (v0.2):** m = 0 only. Analytic pillbox modes, plus a 2D axisymmetric
+**Status (v0.3):** m = 0 only. Analytic pillbox modes, plus a 2D axisymmetric
 finite-element solver for arbitrary spline-defined profiles. Also figures of
 merit, driven response and a full-Lorentz-force tracker, all validated against
-closed-form results. Next: the browser front end (FastAPI backend, draggable
-spline points).
+closed-form results. A browser UI ties it together: drag the wall, see the modes, track a bunch.
 
 ## Quick start
 
@@ -26,6 +25,28 @@ uv run python examples/fem_tour.py --nose   # re-entrant nose-cone cell (gmsh)
 
 Commit `uv.lock` so every machine resolves the same versions.
 
+## Web UI
+
+```bash
+uv run cavity-ui              # opens http://127.0.0.1:8000/
+uv run cavity-ui --port 8100 --no-browser
+```
+
+* **Cell section:** drag the control points to reshape the wall.
+  * Squares are corners and circles are smooth points; right-click a point to switch it.
+  * Double-click to add a point. Select a point and press Delete to remove it, or use the arrow keys to nudge it.
+  * After each edit the cell is re-solved (untick "after each edit" to solve by hand).
+  * The selected mode's field is painted inside the cell, with E (TM) or B (TE) arrows. "Animate" runs it through an RF cycle.
+* **Modes:** frequency, Q₀, T, R/Q, ZT² and Epk/Eacc. The β used comes from the beam energy.
+  Click a row to show that mode; tick "Drive" to add it to the drive.
+* **Drive and beam:** set each driven mode by effective voltage or stored energy, with a phase from crest.
+  "Track bunch" shows the phase space entering and leaving the cell (x–x′, y–y′, Δφ–ΔE, x–Δφ),
+  the rms size along z, and a table of emittances, Twiss parameters and energy.
+
+Shapes whose wall is single-valued, r = R(z), use the built-in mapped mesher. Anything else
+(nose cones, beam-pipe steps) uses gmsh. The server is Starlette plus uvicorn. The page is plain HTML, CSS
+and JS with no CDN, so it works offline.
+
 ## Layout
 
 | module | what it does |
@@ -38,6 +59,7 @@ Commit `uv.lock` so every machine resolves the same versions.
 | `driven.py` | steady-state response to a drive at any frequency (mode expansion) |
 | `beam.py` | Gaussian bunches from Twiss parameters; phase-space coordinates and rms statistics |
 | `tracking.py` | RK4 in z with full E and B fields; crest finding by tracking |
+| `api.py`, `server.py`, `web/` | JSON API (testable without HTTP), Starlette app, and the browser UI |
 
 ## FEM in one paragraph
 
